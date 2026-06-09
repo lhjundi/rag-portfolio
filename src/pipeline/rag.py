@@ -17,7 +17,7 @@ from openai import OpenAI, RateLimitError
 from pypdf import PdfReader
 
 
-def _make_client() -> tuple[OpenAI, str]:
+def _make_client() -> tuple[OpenAI, str | None]:
     """Inicializa cliente OpenAI-compatible conforme provider escolhido no .env."""
     if "GEMINI_API_KEY" in os.environ:
         client = OpenAI(
@@ -31,6 +31,23 @@ def _make_client() -> tuple[OpenAI, str]:
     else:
         raise RuntimeError("Configure GEMINI_API_KEY ou OPENAI_API_KEY no .env")
     return client, embed_api_base
+
+
+def _is_quota_error(error: Exception) -> bool:
+    """Detecta erros de quota/rate limit mesmo quando a exception muda no deploy."""
+    error_name = type(error).__name__
+    error_text = str(error)
+    status_code = getattr(error, "status_code", None)
+
+    return (
+        status_code == 429
+        or "RateLimit" in error_name
+        or "rate limit" in error_text.lower()
+        or "429" in error_text
+        or "RESOURCE_EXHAUSTED" in error_text
+        or "quota" in error_text.lower()
+        or "exceeded" in error_text.lower()
+    )
 
 
 class RAGPipeline:
@@ -54,6 +71,7 @@ class RAGPipeline:
         }
         if embed_api_base:
             embed_kwargs["api_base"] = embed_api_base
+
         self.embed_fn = OpenAIEmbeddingFunction(**embed_kwargs)
 
         self.corpus_dir = Path(corpus_dir)
@@ -62,7 +80,8 @@ class RAGPipeline:
 
         chroma = chromadb.PersistentClient(path=persist_dir)
         self.collection = chroma.get_or_create_collection(
-            name=collection_name, embedding_function=self.embed_fn
+            name=collection_name,
+            embedding_function=self.embed_fn,
         )
 
     # ------------------------------------------------------------------ TODO 1
@@ -70,14 +89,7 @@ class RAGPipeline:
         """Le PDFs de `corpus_dir`, faz chunking e indexa em Chroma.
 
         Retorna numero de chunks indexados.
-
-        Ja deixei a estrutura do ciclo. Voce completa as 3 partes marcadas.
         """
-        # SEU CODIGO AQUI — TODO 1.A
-        # Iterar por todos os PDFs em self.corpus_dir.
-        # Para cada PDF, ler todas as paginas com PdfReader e extrair texto.
-        # Acumular numa lista `docs` com dicts: {"text": str, "source": str, "page": int}
-        # Dica: reaproveite o snippet do notebook 02 (Etapa 1 — Ingestao de PDFs).
         docs: list[dict] = []
         for pdf_path in sorted(self.corpus_dir.glob("*.pdf")):
             source = pdf_path.name
@@ -88,16 +100,13 @@ class RAGPipeline:
                     continue
                 docs.append({"text": text, "source": source, "page": page_number})
 
-        # SEU CODIGO AQUI — TODO 1.B
-        # Aplicar RecursiveCharacterTextSplitter com chunk_size=800, overlap=100
-        # Quebrar cada doc em chunks e construir lista `chunks` com:
-        # {"id": unique_id, "text": str, "source": str, "page": int}
-        # Dica: reaproveite o notebook 02 (Etapa 2 — Chunking Recursivo).
         chunks: list[dict] = []
         splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+
         for doc in docs:
             source = doc["source"]
             page = doc["page"]
+
             for i, piece in enumerate(splitter.split_text(doc["text"])):
                 chunks.append(
                     {
@@ -108,12 +117,6 @@ class RAGPipeline:
                     }
                 )
 
-        # SEU CODIGO AQUI — TODO 1.C
-        # Adicionar chunks no Chroma via self.collection.add(ids=, documents=, metadatas=)
-        # Lembre de filtrar metadatas para conter apenas {source, page} (Chroma rejeita listas).
-        # Indexa em lotes respeitando o free tier do Gemini (100 embeddings/minuto).
-        # Lotes de 80 deixam folga abaixo do limite; aguarda ~60s entre lotes para nao
-        # estourar a janela por minuto. Em caso de 429, espera e tenta o mesmo lote de novo.
         batch_size = 80
         throttle_seconds = 60
         total_batches = (len(chunks) + batch_size - 1) // batch_size
@@ -121,15 +124,22 @@ class RAGPipeline:
         for index in range(total_batches):
             start = index * batch_size
             batch = chunks[start : start + batch_size]
+
             ids = [c["id"] for c in batch]
             documents = [c["text"] for c in batch]
             metadatas = [{"source": c["source"], "page": c["page"]} for c in batch]
 
             for attempt in range(6):
                 try:
-                    self.collection.add(ids=ids, documents=documents, metadatas=metadatas)
+                    self.collection.add(
+                        ids=ids,
+                        documents=documents,
+                        metadatas=metadatas,
+                    )
                     break
-                except RateLimitError:
+                except Exception as e:
+                    if not _is_quota_error(e):
+                        raise
                     if attempt == 5:
                         raise
                     time.sleep(65)
@@ -142,10 +152,6 @@ class RAGPipeline:
     # ------------------------------------------------------------------ TODO 2
     def retrieve(self, query: str, k: int = 5) -> list[dict]:
         """Busca top-k chunks similares a query."""
-        # SEU CODIGO AQUI — TODO 2
-        # Usar self.collection.query(query_texts=[query], n_results=k)
-        # Retornar lista de dicts: {"text", "source", "page", "distance"}
-        # Dica: notebook 02, Etapa 4 — Retrieval.
         results = self.collection.query(query_texts=[query], n_results=k)
 
         documents = results["documents"][0]
@@ -163,21 +169,25 @@ class RAGPipeline:
                     "distance": distance,
                 }
             )
+
         return hits
 
     # ------------------------------------------------------------------ TODO 3
     def answer(self, question: str, k: int = 5) -> dict:
-        """Pipeline completo: retrieve + augment + generate. Retorna {answer, sources}.
+        """Pipeline completo: retrieve + augment + generate.
 
-        Se a API bater rate limit, o app nao quebra: retorna uma resposta
-        amigavel com fallback baseado nos trechos recuperados.
+        Retorna {answer, sources}. Se bater quota/rate limit, retorna fallback
+        amigavel em vez de quebrar a UI do Streamlit.
         """
         try:
             hits = self.retrieve(question, k=k)
-        except RateLimitError:
+        except Exception as e:
+            if not _is_quota_error(e):
+                raise
+
             return {
                 "answer": (
-                    "A cota da API foi atingida durante a busca semântica. "
+                    "A cota da API Gemini foi atingida durante a busca semântica. "
                     "Tente novamente em alguns minutos. Nenhum dado foi perdido; "
                     "isso é uma limitação temporária do Gemini Free Tier."
                 ),
@@ -197,7 +207,8 @@ class RAGPipeline:
                 max_tokens=800,
                 temperature=0,
             )
-            answer = response.choices[0].message.content
+
+            answer = response.choices[0].message.content or ""
 
             return {
                 "answer": answer,
@@ -205,7 +216,10 @@ class RAGPipeline:
                 "rate_limited": False,
             }
 
-        except RateLimitError:
+        except Exception as e:
+            if not _is_quota_error(e):
+                raise
+
             fallback_parts = []
             for h in hits[:3]:
                 excerpt = " ".join((h["text"] or "").split())
