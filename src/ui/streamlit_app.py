@@ -202,5 +202,5 @@ if query:
 st.divider()
 st.caption(
     "Corpus: PPC Bacharelado em Engenharia de Software — IFSP Campus São Carlos "
-    "(Atualização Nov/2025) | RAG + Gemini + Chroma"
+    "(Atualização Nov/2025) | RAG + Gemini Embeddings + Groq/Llama + Chroma"
 )
