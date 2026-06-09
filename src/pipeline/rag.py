@@ -126,7 +126,24 @@ class RAGPipeline:
         # Usar self.collection.query(query_texts=[query], n_results=k)
         # Retornar lista de dicts: {"text", "source", "page", "distance"}
         # Dica: notebook 02, Etapa 4 — Retrieval.
-        raise NotImplementedError("TODO 2: implementar retrieve()")
+        results = self.collection.query(query_texts=[query], n_results=k)
+
+        documents = results["documents"][0]
+        metadatas = results["metadatas"][0]
+        distances = results["distances"][0]
+
+        hits: list[dict] = []
+        for text, metadata, distance in zip(documents, metadatas, distances):
+            metadata = metadata or {}
+            hits.append(
+                {
+                    "text": text,
+                    "source": metadata.get("source"),
+                    "page": metadata.get("page"),
+                    "distance": distance,
+                }
+            )
+        return hits
 
     # ------------------------------------------------------------------ TODO 3
     def answer(self, question: str, k: int = 5) -> dict:
