@@ -29,10 +29,17 @@ from src.pipeline.routing import classify_complexity  # noqa: E402
 
 
 # ---------------------------------------------------------------- Streamlit UI
-st.set_page_config(page_title="Portfolio LLM Demo", page_icon=":robot:", layout="centered")
+st.set_page_config(
+    page_title="PPC Engenharia de Software — IFSP São Carlos",
+    page_icon="🎓",
+    layout="centered",
+)
 
-st.title(":robot: TODO — Substitua pelo titulo do seu projeto")
-st.caption("TODO — Substitua: 1-sentence pitch do seu projeto")
+st.title("🎓 PPC Engenharia de Software — IFSP São Carlos")
+st.caption(
+    "Tire dúvidas sobre o curso: currículo, disciplinas, TCC, estágio, perfil do egresso "
+    "e mais. Respostas baseadas no PPC 2023 (atualizado nov/2025)."
+)
 
 
 # Inicializacao lazy de pipeline + caches
@@ -71,7 +78,10 @@ with st.sidebar:
 
 
 # Main — chat interface
-query = st.text_input("Sua pergunta:", placeholder="Pergunte algo sobre o corpus indexado...")
+query = st.text_input(
+    "Sua pergunta:",
+    placeholder="Ex: Quais disciplinas tem no 3º semestre? O que é necessário para fazer o TCC? Qual o perfil do egresso?",
+)
 
 if query:
     with trace("query_handle", query=query) as ctx:
@@ -127,6 +137,6 @@ if query:
 
 st.divider()
 st.caption(
-    "TODO README — substitua por: problem statement, arquitetura, custo/latencia, decisoes de design. "
-    "Veja `README.md` do projeto para a estrutura completa."
+    "Corpus: PPC Bacharelado em Engenharia de Software — IFSP Campus São Carlos "
+    "(Atualização Nov/2025) | RAG + Gemini + Chroma"
 )
