@@ -156,7 +156,22 @@ class RAGPipeline:
         # 3. Chamar self.client.chat.completions.create(model=self.llm_model, ...)
         # 4. Retornar {"answer": resposta, "sources": [(s, p) for h in hits]}
         # Dica: notebook 02, Etapa 5 — Augment + Generate.
-        raise NotImplementedError("TODO 3: implementar answer()")
+        context = "\n".join(
+            f"[{h['source']}:p{h['page']}]\n{h['text']}\n---" for h in hits
+        )
+        prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+
+        response = self.client.chat.completions.create(
+            model=self.llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800,
+        )
+        answer = response.choices[0].message.content
+
+        return {
+            "answer": answer,
+            "sources": [(h["source"], h["page"]) for h in hits],
+        }
 
 
 PROMPT_TEMPLATE = """Voce e um assistente tecnico. Responda APENAS com base no contexto abaixo.
