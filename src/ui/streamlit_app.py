@@ -28,6 +28,23 @@ from src.pipeline.rag import build_rag_pipeline  # noqa: E402
 from src.pipeline.routing import classify_complexity  # noqa: E402
 
 
+def is_quota_error(error: Exception) -> bool:
+    """Detecta erros de quota/rate limit para evitar crash vermelho no Streamlit."""
+    error_name = type(error).__name__
+    error_text = str(error)
+    status_code = getattr(error, "status_code", None)
+
+    return (
+        status_code == 429
+        or "RateLimit" in error_name
+        or "rate limit" in error_text.lower()
+        or "429" in error_text
+        or "RESOURCE_EXHAUSTED" in error_text
+        or "quota" in error_text.lower()
+        or "exceeded" in error_text.lower()
+    )
+
+
 # ---------------------------------------------------------------- Streamlit UI
 st.set_page_config(
     page_title="PPC Engenharia de Software — IFSP São Carlos",
@@ -101,12 +118,15 @@ if query:
         except NotImplementedError:
             cached = None
             st.warning("Semantic cache nao implementado (TODO 5). Caindo no LLM real.")
-        except RateLimitError:
+        except Exception as e:
             cached = None
-            st.warning(
-                "Cache semântico indisponível no momento por limite de quota da API. "
-                "Continuando com RAG sem cache semântico."
-            )
+            if is_quota_error(e):
+                st.warning(
+                    "Cache semântico indisponível no momento por limite de quota da API. "
+                    "Continuando com RAG sem cache semântico."
+                )
+            else:
+                raise
 
         if cached:
             st.success("Cache hit (semantic)")
@@ -121,6 +141,14 @@ if query:
             log_event("route_decision", trace_id=trace_id, **decision.__dict__)
         except NotImplementedError:
             st.warning("Routing nao implementado (TODO 6). Usando modelo default.")
+        except Exception as e:
+            if is_quota_error(e):
+                st.warning(
+                    "Routing indisponível temporariamente por limite de quota. "
+                    "Usando modelo default."
+                )
+            else:
+                raise
 
         try:
             result = pipeline.answer(query)
@@ -128,13 +156,28 @@ if query:
             st.error(f"Pipeline nao implementado: {e}")
             st.info("Implemente TODOs 1-3 em `src/pipeline/rag.py` para destravar.")
             st.stop()
+        except Exception as e:
+            if not is_quota_error(e):
+                raise
+
+            result = {
+                "answer": (
+                    "A cota da API Gemini foi atingida no momento. "
+                    "O app continua funcionando, mas novas respostas podem depender da liberação da quota. "
+                    "Tente novamente em alguns minutos ou use uma pergunta que já esteja em cache."
+                ),
+                "sources": [],
+                "rate_limited": True,
+            }
 
         # 4. Renderiza + cacheia
         st.write(result["answer"])
+
         if result.get("rate_limited"):
             st.warning(
                 "A resposta acima foi gerada em modo fallback porque a cota da API foi atingida."
             )
+
         if result.get("sources"):
             with st.expander("Fontes citadas"):
                 for source, page in result["sources"]:
@@ -144,11 +187,14 @@ if query:
 
         try:
             semantic_cache.put(query, result["answer"])
-        except RateLimitError:
-            st.warning(
-                "A resposta foi salva no cache exato, mas o cache semântico não foi atualizado "
-                "porque a cota da API foi atingida."
-            )
+        except Exception as e:
+            if is_quota_error(e):
+                st.warning(
+                    "A resposta foi salva no cache exato, mas o cache semântico não foi atualizado "
+                    "porque a cota da API foi atingida."
+                )
+            else:
+                raise
 
         log_event("answer_generated", trace_id=trace_id, sources=len(result.get("sources", [])))
 
