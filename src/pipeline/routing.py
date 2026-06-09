@@ -35,7 +35,33 @@ def classify_complexity(query: str) -> RouteDecision:
     #   - default → simple
     # Retorne RouteDecision(model=cheap_model OU premium_model, complexity=..., reason="por que")
     # Dica: notebook 05, Etapa 5 — Model Routing.
-    raise NotImplementedError("TODO 6: implementar classify_complexity()")
+    COMPLEX_MARKERS = (
+        "explique", "compare", "analise", "diferença", "quando devo", "por que",
+        "como funciona", "quais são", "descreva", "detalhe", "explica",
+        "o que significa", "me explica", "quais disciplinas", "como é estruturado",
+    )
+
+    if len(query) < 60 and query.endswith("?"):
+        return RouteDecision(
+            model=cheap_model,
+            complexity="simple",
+            reason="pergunta curta (<60) terminando em '?'",
+        )
+
+    lowered = query.lower()
+    for marker in COMPLEX_MARKERS:
+        if marker in lowered:
+            return RouteDecision(
+                model=premium_model,
+                complexity="complex",
+                reason=f"contém marcador de complexidade: '{marker}'",
+            )
+
+    return RouteDecision(
+        model=cheap_model,
+        complexity="simple",
+        reason="default (nenhuma regra de complexidade disparou)",
+    )
 
 
 def make_client() -> OpenAI:
