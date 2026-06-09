@@ -4,7 +4,7 @@
 
 <!-- TODO: cole aqui o GIF de demo (10-15s, <5MB) gerado com peek/terminalizer/OBS -->
 
-**Live demo:** _pendente de deploy (Streamlit Community Cloud)_
+**Live demo:** https://rag-portfolio.streamlit.app/
 
 ## Problem statement
 
