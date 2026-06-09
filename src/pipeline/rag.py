@@ -1,6 +1,6 @@
 """RAG pipeline — chunk, embed, index, retrieve, generate.
 
-Reaproveita as funcoes do notebook 02. Voce vai preencher 3 TODOs aqui.
+Usa Gemini para embeddings e, se disponivel, Groq para gerar respostas.
 """
 
 from __future__ import annotations
@@ -13,24 +13,12 @@ from typing import Any
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import OpenAI, RateLimitError
+from openai import OpenAI
 from pypdf import PdfReader
 
 
-def _make_client() -> tuple[OpenAI, str | None]:
-    """Inicializa cliente OpenAI-compatible conforme provider escolhido no .env."""
-    if "GEMINI_API_KEY" in os.environ:
-        client = OpenAI(
-            api_key=os.environ["GEMINI_API_KEY"],
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-        )
-        embed_api_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
-    elif "OPENAI_API_KEY" in os.environ:
-        client = OpenAI()
-        embed_api_base = None
-    else:
-        raise RuntimeError("Configure GEMINI_API_KEY ou OPENAI_API_KEY no .env")
-    return client, embed_api_base
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 
 def _is_quota_error(error: Exception) -> bool:
@@ -50,6 +38,53 @@ def _is_quota_error(error: Exception) -> bool:
     )
 
 
+def _make_chat_client() -> tuple[OpenAI, str]:
+    """Cliente de geração: prefere Groq; se não houver, cai para Gemini/OpenAI."""
+    if "GROQ_API_KEY" in os.environ:
+        client = OpenAI(
+            api_key=os.environ["GROQ_API_KEY"],
+            base_url=GROQ_BASE_URL,
+        )
+        model = os.environ.get("LLM_MODEL", "llama-3.1-8b-instant")
+        return client, model
+
+    if "GEMINI_API_KEY" in os.environ:
+        client = OpenAI(
+            api_key=os.environ["GEMINI_API_KEY"],
+            base_url=GEMINI_BASE_URL,
+        )
+        model = os.environ.get("LLM_MODEL", "gemini-2.5-flash-lite")
+        return client, model
+
+    if "OPENAI_API_KEY" in os.environ:
+        client = OpenAI()
+        model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+        return client, model
+
+    raise RuntimeError("Configure GROQ_API_KEY, GEMINI_API_KEY ou OPENAI_API_KEY.")
+
+
+def _make_embedding_function(embed_model: str) -> OpenAIEmbeddingFunction:
+    """Função de embedding: usa Gemini se disponível; senão OpenAI."""
+    if "GEMINI_API_KEY" in os.environ:
+        return OpenAIEmbeddingFunction(
+            api_key=os.environ["GEMINI_API_KEY"],
+            api_base=GEMINI_BASE_URL,
+            model_name=embed_model,
+        )
+
+    if "OPENAI_API_KEY" in os.environ:
+        return OpenAIEmbeddingFunction(
+            api_key=os.environ["OPENAI_API_KEY"],
+            model_name=embed_model,
+        )
+
+    raise RuntimeError(
+        "Configure GEMINI_API_KEY ou OPENAI_API_KEY para embeddings. "
+        "A GROQ_API_KEY sozinha não gera embeddings para o Chroma."
+    )
+
+
 class RAGPipeline:
     """Pipeline RAG end-to-end com Chroma local."""
 
@@ -61,18 +96,12 @@ class RAGPipeline:
         llm_model: str | None = None,
         embed_model: str | None = None,
     ) -> None:
-        self.client, embed_api_base = _make_client()
-        self.llm_model = llm_model or os.environ.get("LLM_MODEL", "gemini-2.5-flash-lite")
+        self.client, default_llm_model = _make_chat_client()
+        self.llm_model = llm_model or default_llm_model
+
+        # Mantem Gemini como embedding default para ser compativel com o indice versionado.
         self.embed_model = embed_model or os.environ.get("EMBED_MODEL", "gemini-embedding-001")
-
-        embed_kwargs: dict[str, Any] = {
-            "api_key": os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENAI_API_KEY"),
-            "model_name": self.embed_model,
-        }
-        if embed_api_base:
-            embed_kwargs["api_base"] = embed_api_base
-
-        self.embed_fn = OpenAIEmbeddingFunction(**embed_kwargs)
+        self.embed_fn = _make_embedding_function(self.embed_model)
 
         self.corpus_dir = Path(corpus_dir)
         self.persist_dir = persist_dir
@@ -86,19 +115,25 @@ class RAGPipeline:
 
     # ------------------------------------------------------------------ TODO 1
     def ingest_and_index(self) -> int:
-        """Le PDFs de `corpus_dir`, faz chunking e indexa em Chroma.
-
-        Retorna numero de chunks indexados.
-        """
+        """Le PDFs de `corpus_dir`, faz chunking e indexa em Chroma."""
         docs: list[dict] = []
+
         for pdf_path in sorted(self.corpus_dir.glob("*.pdf")):
             source = pdf_path.name
             reader = PdfReader(str(pdf_path))
+
             for page_number, page in enumerate(reader.pages, start=1):
                 text = (page.extract_text() or "").strip()
                 if not text:
                     continue
-                docs.append({"text": text, "source": source, "page": page_number})
+
+                docs.append(
+                    {
+                        "text": text,
+                        "source": source,
+                        "page": page_number,
+                    }
+                )
 
         chunks: list[dict] = []
         splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
@@ -140,8 +175,10 @@ class RAGPipeline:
                 except Exception as e:
                     if not _is_quota_error(e):
                         raise
+
                     if attempt == 5:
                         raise
+
                     time.sleep(65)
 
             if index < total_batches - 1:
@@ -159,8 +196,10 @@ class RAGPipeline:
         distances = results["distances"][0]
 
         hits: list[dict] = []
+
         for text, metadata, distance in zip(documents, metadatas, distances):
             metadata = metadata or {}
+
             hits.append(
                 {
                     "text": text,
@@ -174,11 +213,7 @@ class RAGPipeline:
 
     # ------------------------------------------------------------------ TODO 3
     def answer(self, question: str, k: int = 5) -> dict:
-        """Pipeline completo: retrieve + augment + generate.
-
-        Retorna {answer, sources}. Se bater quota/rate limit, retorna fallback
-        amigavel em vez de quebrar a UI do Streamlit.
-        """
+        """Pipeline completo: retrieve + augment + generate."""
         try:
             hits = self.retrieve(question, k=k)
         except Exception as e:
@@ -187,9 +222,8 @@ class RAGPipeline:
 
             return {
                 "answer": (
-                    "A cota da API Gemini foi atingida durante a busca semântica. "
-                    "Tente novamente em alguns minutos. Nenhum dado foi perdido; "
-                    "isso é uma limitação temporária do Gemini Free Tier."
+                    "A cota da API de embeddings foi atingida durante a busca semântica. "
+                    "Tente novamente em alguns minutos."
                 ),
                 "sources": [],
                 "rate_limited": True,
@@ -227,9 +261,8 @@ class RAGPipeline:
                 fallback_parts.append(f"- [{h['source']}:p{h['page']}] {excerpt}")
 
             fallback_answer = (
-                "A busca no PPC funcionou, mas a cota da API Gemini foi atingida "
-                "durante a geração da resposta. Abaixo estão os trechos mais relevantes "
-                "recuperados do corpus:\n\n"
+                "A busca no PPC funcionou, mas a cota do modelo de geração foi atingida. "
+                "Abaixo estão os trechos mais relevantes recuperados do corpus:\n\n"
                 + "\n\n".join(fallback_parts)
             )
 
@@ -242,8 +275,10 @@ class RAGPipeline:
 
 PROMPT_TEMPLATE = """Você é um assistente especializado no PPC (Projeto Pedagógico de Curso)
 do Bacharelado em Engenharia de Software do IFSP São Carlos.
+
 Responda APENAS com base no contexto abaixo. Se a informação não estiver no contexto,
 diga "Não encontrei essa informação no PPC."
+
 Sempre cite a seção ou página usando o formato [p.{{página}}].
 
 CONTEXTO:
@@ -257,6 +292,8 @@ RESPOSTA:"""
 def build_rag_pipeline(corpus_dir: str = "data/corpus") -> RAGPipeline:
     """Factory: cria pipeline e indexa corpus se ainda nao indexado."""
     pipeline = RAGPipeline(corpus_dir=corpus_dir)
+
     if pipeline.collection.count() == 0:
         pipeline.ingest_and_index()
+
     return pipeline
