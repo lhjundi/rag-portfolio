@@ -11,7 +11,9 @@ from typing import Any
 
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
+from pypdf import PdfReader
 
 
 def _make_client() -> tuple[OpenAI, str]:
@@ -76,6 +78,14 @@ class RAGPipeline:
         # Acumular numa lista `docs` com dicts: {"text": str, "source": str, "page": int}
         # Dica: reaproveite o snippet do notebook 02 (Etapa 1 — Ingestao de PDFs).
         docs: list[dict] = []
+        for pdf_path in sorted(self.corpus_dir.glob("*.pdf")):
+            source = pdf_path.name
+            reader = PdfReader(str(pdf_path))
+            for page_number, page in enumerate(reader.pages, start=1):
+                text = (page.extract_text() or "").strip()
+                if not text:
+                    continue
+                docs.append({"text": text, "source": source, "page": page_number})
 
         # SEU CODIGO AQUI — TODO 1.B
         # Aplicar RecursiveCharacterTextSplitter com chunk_size=800, overlap=100
@@ -83,10 +93,29 @@ class RAGPipeline:
         # {"id": unique_id, "text": str, "source": str, "page": int}
         # Dica: reaproveite o notebook 02 (Etapa 2 — Chunking Recursivo).
         chunks: list[dict] = []
+        splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+        for doc in docs:
+            source = doc["source"]
+            page = doc["page"]
+            for i, piece in enumerate(splitter.split_text(doc["text"])):
+                chunks.append(
+                    {
+                        "id": f"{source}-{page}-{i}",
+                        "text": piece,
+                        "source": source,
+                        "page": page,
+                    }
+                )
 
         # SEU CODIGO AQUI — TODO 1.C
         # Adicionar chunks no Chroma via self.collection.add(ids=, documents=, metadatas=)
         # Lembre de filtrar metadatas para conter apenas {source, page} (Chroma rejeita listas).
+        if chunks:
+            self.collection.add(
+                ids=[c["id"] for c in chunks],
+                documents=[c["text"] for c in chunks],
+                metadatas=[{"source": c["source"], "page": c["page"]} for c in chunks],
+            )
 
         return self.collection.count()
 
