@@ -141,7 +141,15 @@ if query:
                     st.write(f"- `{source}:p{page}`")
 
         exact_cache.put(query, result["answer"])
-        semantic_cache.put(query, result["answer"])
+
+        try:
+            semantic_cache.put(query, result["answer"])
+        except RateLimitError:
+            st.warning(
+                "A resposta foi salva no cache exato, mas o cache semântico não foi atualizado "
+                "porque a cota da API foi atingida."
+            )
+
         log_event("answer_generated", trace_id=trace_id, sources=len(result.get("sources", [])))
 
 
