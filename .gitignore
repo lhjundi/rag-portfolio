@@ -8,7 +8,7 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Dados e cache
-data/chroma/
+# data/chroma/ é versionado (indice pre-construido para o deploy nao re-embedar)
 data/cache/
 *.log
 
