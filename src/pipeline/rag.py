@@ -174,9 +174,11 @@ class RAGPipeline:
         }
 
 
-PROMPT_TEMPLATE = """Voce e um assistente tecnico. Responda APENAS com base no contexto abaixo.
-Se a informacao nao estiver no contexto, diga "Nao encontrado no corpus".
-Sempre cite a fonte usando o formato [arquivo:pagina].
+PROMPT_TEMPLATE = """Você é um assistente especializado no PPC (Projeto Pedagógico de Curso)
+do Bacharelado em Engenharia de Software do IFSP São Carlos.
+Responda APENAS com base no contexto abaixo. Se a informação não estiver no contexto,
+diga "Não encontrei essa informação no PPC."
+Sempre cite a seção ou página usando o formato [p.{{página}}].
 
 CONTEXTO:
 {context}
