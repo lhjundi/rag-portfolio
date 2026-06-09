@@ -167,31 +167,63 @@ class RAGPipeline:
 
     # ------------------------------------------------------------------ TODO 3
     def answer(self, question: str, k: int = 5) -> dict:
-        """Pipeline completo: retrieve + augment + generate. Retorna {answer, sources}."""
-        hits = self.retrieve(question, k=k)
+        """Pipeline completo: retrieve + augment + generate. Retorna {answer, sources}.
 
-        # SEU CODIGO AQUI — TODO 3
-        # 1. Montar contexto concatenando os textos dos hits com cabecalho [source:page]
-        # 2. Construir prompt com PROMPT_TEMPLATE (definido abaixo)
-        # 3. Chamar self.client.chat.completions.create(model=self.llm_model, ...)
-        # 4. Retornar {"answer": resposta, "sources": [(s, p) for h in hits]}
-        # Dica: notebook 02, Etapa 5 — Augment + Generate.
+        Se a API bater rate limit, o app nao quebra: retorna uma resposta
+        amigavel com fallback baseado nos trechos recuperados.
+        """
+        try:
+            hits = self.retrieve(question, k=k)
+        except RateLimitError:
+            return {
+                "answer": (
+                    "A cota da API foi atingida durante a busca semântica. "
+                    "Tente novamente em alguns minutos. Nenhum dado foi perdido; "
+                    "isso é uma limitação temporária do Gemini Free Tier."
+                ),
+                "sources": [],
+                "rate_limited": True,
+            }
+
         context = "\n".join(
             f"[{h['source']}:p{h['page']}]\n{h['text']}\n---" for h in hits
         )
         prompt = PROMPT_TEMPLATE.format(context=context, question=question)
 
-        response = self.client.chat.completions.create(
-            model=self.llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=800,
-        )
-        answer = response.choices[0].message.content
+        try:
+            response = self.client.chat.completions.create(
+                model=self.llm_model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800,
+                temperature=0,
+            )
+            answer = response.choices[0].message.content
 
-        return {
-            "answer": answer,
-            "sources": [(h["source"], h["page"]) for h in hits],
-        }
+            return {
+                "answer": answer,
+                "sources": [(h["source"], h["page"]) for h in hits],
+                "rate_limited": False,
+            }
+
+        except RateLimitError:
+            fallback_parts = []
+            for h in hits[:3]:
+                excerpt = " ".join((h["text"] or "").split())
+                excerpt = excerpt[:450] + ("..." if len(excerpt) > 450 else "")
+                fallback_parts.append(f"- [{h['source']}:p{h['page']}] {excerpt}")
+
+            fallback_answer = (
+                "A busca no PPC funcionou, mas a cota da API Gemini foi atingida "
+                "durante a geração da resposta. Abaixo estão os trechos mais relevantes "
+                "recuperados do corpus:\n\n"
+                + "\n\n".join(fallback_parts)
+            )
+
+            return {
+                "answer": fallback_answer,
+                "sources": [(h["source"], h["page"]) for h in hits],
+                "rate_limited": True,
+            }
 
 
 PROMPT_TEMPLATE = """Você é um assistente especializado no PPC (Projeto Pedagógico de Curso)

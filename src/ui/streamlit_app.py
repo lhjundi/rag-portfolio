@@ -21,7 +21,7 @@ sys.path.insert(0, str(_ROOT))
 load_dotenv()
 
 import streamlit as st  # noqa: E402
-
+from openai import RateLimitError  # noqa: E402
 from src.observability.trace import trace, log_event  # noqa: E402
 from src.pipeline.cache import ExactCache, SemanticCache  # noqa: E402
 from src.pipeline.rag import build_rag_pipeline  # noqa: E402
@@ -101,6 +101,12 @@ if query:
         except NotImplementedError:
             cached = None
             st.warning("Semantic cache nao implementado (TODO 5). Caindo no LLM real.")
+        except RateLimitError:
+            cached = None
+            st.warning(
+                "Cache semântico indisponível no momento por limite de quota da API. "
+                "Continuando com RAG sem cache semântico."
+            )
 
         if cached:
             st.success("Cache hit (semantic)")
@@ -125,6 +131,10 @@ if query:
 
         # 4. Renderiza + cacheia
         st.write(result["answer"])
+        if result.get("rate_limited"):
+            st.warning(
+                "A resposta acima foi gerada em modo fallback porque a cota da API foi atingida."
+            )
         if result.get("sources"):
             with st.expander("Fontes citadas"):
                 for source, page in result["sources"]:
