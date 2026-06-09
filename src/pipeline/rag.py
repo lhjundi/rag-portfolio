@@ -6,13 +6,14 @@ Reaproveita as funcoes do notebook 02. Voce vai preencher 3 TODOs aqui.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from pypdf import PdfReader
 
 
@@ -110,12 +111,31 @@ class RAGPipeline:
         # SEU CODIGO AQUI — TODO 1.C
         # Adicionar chunks no Chroma via self.collection.add(ids=, documents=, metadatas=)
         # Lembre de filtrar metadatas para conter apenas {source, page} (Chroma rejeita listas).
-        if chunks:
-            self.collection.add(
-                ids=[c["id"] for c in chunks],
-                documents=[c["text"] for c in chunks],
-                metadatas=[{"source": c["source"], "page": c["page"]} for c in chunks],
-            )
+        # Indexa em lotes respeitando o free tier do Gemini (100 embeddings/minuto).
+        # Lotes de 80 deixam folga abaixo do limite; aguarda ~60s entre lotes para nao
+        # estourar a janela por minuto. Em caso de 429, espera e tenta o mesmo lote de novo.
+        batch_size = 80
+        throttle_seconds = 60
+        total_batches = (len(chunks) + batch_size - 1) // batch_size
+
+        for index in range(total_batches):
+            start = index * batch_size
+            batch = chunks[start : start + batch_size]
+            ids = [c["id"] for c in batch]
+            documents = [c["text"] for c in batch]
+            metadatas = [{"source": c["source"], "page": c["page"]} for c in batch]
+
+            for attempt in range(6):
+                try:
+                    self.collection.add(ids=ids, documents=documents, metadatas=metadatas)
+                    break
+                except RateLimitError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(65)
+
+            if index < total_batches - 1:
+                time.sleep(throttle_seconds)
 
         return self.collection.count()
 
