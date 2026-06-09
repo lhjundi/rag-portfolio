@@ -70,7 +70,20 @@ class SemanticCache:
         # 3. Pegar idx do maior; se sims[idx] >= self.threshold, retornar self._answers[idx]
         # 4. Caso contrario, retornar None
         # Dica: notebook 05, Etapa 4 — Semantic Cache.
-        raise NotImplementedError("TODO 5: implementar SemanticCache.get()")
+        if not self._embeddings:
+            return None
+
+        query_vec = self._embed(query)
+        sims = [
+            float(np.dot(query_vec, stored_vec)
+                  / (np.linalg.norm(query_vec) * np.linalg.norm(stored_vec)))
+            for stored_vec in self._embeddings
+        ]
+
+        idx = int(np.argmax(sims))
+        if sims[idx] >= self.threshold:
+            return self._answers[idx]
+        return None
 
     def put(self, query: str, answer: str) -> None:
         self._queries.append(query)
