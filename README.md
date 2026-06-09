@@ -1,18 +1,20 @@
-# TODO — Substitua pelo nome do seu projeto
+# PPC ES Q&A — Assistente RAG sobre o curso de Engenharia de Software IFSP
 
-> **TODO** — Substitua por 1 frase explicando o que o seu app faz e para quem.
+> Tire dúvidas sobre o Bacharelado em Engenharia de Software do IFSP São Carlos com respostas baseadas no PPC oficial, com citação de página.
 
 <!-- TODO: cole aqui o GIF de demo (10-15s, <5MB) gerado com peek/terminalizer/OBS -->
 
-**Live demo:** TODO — substitua pelo link do Streamlit Cloud / HuggingFace Spaces / FastAPI
+**Live demo:** _pendente de deploy (Streamlit Community Cloud)_
 
 ## Problem statement
 
-TODO — 3 linhas:
+1. Calouros e alunos têm dificuldade de encontrar informações no PPC de 152 páginas: pré-requisitos, carga horária, regras de TCC, atividades complementares.
+2. Para alunos, futuros alunos e coordenação do curso de Engenharia de Software do IFSP São Carlos.
+3. RAG é ideal porque o PPC é o corpus canônico; respostas devem citar a página exata para ter credibilidade institucional.
 
-1. Qual problema voce resolve?
-2. Para quem?
-3. Por que LLM + RAG + Tool-use eh a abordagem certa (vs. busca simples)?
+## Corpus
+
+PPC Bacharelado em Engenharia de Software — IFSP Campus São Carlos, atualização de novembro de 2025 (Parecer N.º 37/2025), 152 páginas.
 
 ## Arquitetura
 
@@ -27,20 +29,18 @@ flowchart LR
     CLS -->|simple| CHEAP[Cheap LLM]
     CLS -->|complex| ORCH[Orchestrator]
     ORCH --> RAG[(Chroma RAG)]
-    ORCH --> TOOL[Custom tool]
+    ORCH --> TOOL[lookup_section]
     RAG --> PREMIUM[Premium LLM]
     TOOL --> PREMIUM
     PREMIUM --> RESP
 ```
 
-TODO — substituir pelo diagrama da SUA arquitetura se diferente.
-
 ## Setup
 
 ```bash
 # 1. Clone (se nao clonou ainda)
-git clone <seu-repo>
-cd projeto-portfolio
+git clone git@github.com:lhjundi/rag-portfolio.git
+cd rag-portfolio
 
 # 2. Dependencias
 uv venv && source .venv/bin/activate
@@ -51,9 +51,8 @@ cp .env.example .env
 # edite .env com sua key
 
 # 4. Corpus
-# Substitua data/corpus/*.pdf pelos seus documentos
-# OU copie dos papers do M2:
-# cp ../../../datasets/corpus/*.pdf data/corpus/
+# O PPC ja esta versionado em data/corpus/.
+# Para trocar, substitua o PDF em data/corpus/ por outro.
 
 # 5. Rodar local
 streamlit run src/ui/streamlit_app.py
@@ -61,7 +60,7 @@ streamlit run src/ui/streamlit_app.py
 
 ## Cost & Latency
 
-TODO — preencher apos rodar bench de 50 queries (veja notebook 05).
+_A preencher após rodar o bench de 50 queries (veja notebook 05)._
 
 | Estrategia | Custo total | Reducao | P95 latency |
 |---|---:|---:|---:|
@@ -74,26 +73,23 @@ Meta da rubrica (banda "excelente"): **≥50% de reducao** + P95 reportado.
 
 ## Design decisions
 
-TODO — 3-5 bullets explicando decisoes NAO obvias:
-
-- Por que escolhi este embedding model? (custo, idioma, tamanho do corpus)
-- Por que `chunk_size` = X? (testei X', X'', e Y foi melhor por ...)
-- Por que esta tool especifica? (problema X resolveria com Y, escolhi Z porque ...)
-- Por que NAO incluo re-ranking? (corpus pequeno, latencia mais critica)
+- **`chunk_size=800`** — os planos de ensino (seção 18) têm parágrafos densos; um chunk de 800 caracteres mantém uma ementa coesa sem fragmentar demais. **`overlap=100`** preserva a continuidade entre ementa e objetivos quando o corte cai no meio de um bloco.
+- **Embedding `gemini-embedding-001`** — melhor custo-benefício para português, idioma principal do corpus.
+- **`lookup_section` como tool determinística** — o PPC tem dados estruturados (semestres, códigos, horas) que o LLM tende a confundir; a tool garante precisão ao devolver título, página e descrição fixos por seção, evitando alucinação de números de artigos ou páginas.
+- **Routing cheap-first** — perguntas sobre "quais disciplinas" ou "como é estruturado" são complexas e vão para o modelo premium; perguntas diretas como "qual o código de Algoritmos 1?" são simples e vão para o modelo barato.
 
 ## Limitations
 
-TODO — 3 bullets honestos:
-
-- Limitacao 1 (e.g., corpus tem X paginas; performance degrada se subir para Y)
-- Limitacao 2 (e.g., free tier do Gemini limita a 15 RPM)
-- Limitacao 3 (e.g., demo nao suporta upload de PDF do usuario — corpus eh fixo)
+- O corpus é fixo: apenas o PPC (152 páginas). A demo não suporta upload de outros documentos pelo usuário.
+- As páginas usadas pela tool `lookup_section` são aproximadas e mantidas manualmente — se o PPC for reeditado com nova paginação, elas precisam ser atualizadas.
+- O free tier do Gemini limita a ~15 RPM, o que torna lento o ingest completo e o bench de muitas queries em sequência.
 
 ## Tech stack
 
 - **LLM:** Gemini 2.5 Flash-Lite (default) / GPT-4o-mini (alt)
 - **Embeddings:** gemini-embedding-001
 - **Vector store:** Chroma local
+- **Tool customizada:** `lookup_section(section_key: str)` — navegação dirigida por seção do PPC
 - **UI:** Streamlit
 - **Observability:** structured logs com trace_id (Langfuse opcional)
 - **Deploy:** Streamlit Community Cloud
@@ -101,17 +97,17 @@ TODO — 3 bullets honestos:
 ## Estrutura
 
 ```
-projeto-portfolio/
+rag-portfolio/
 ├── data/
-│   ├── corpus/           # seus PDFs (substituir os de exemplo)
+│   ├── corpus/           # PPC do curso (PDF)
 │   └── chroma/           # vector store (gitignored)
 ├── src/
 │   ├── ui/streamlit_app.py
 │   ├── pipeline/
-│   │   ├── rag.py        # TODOs 1-3
-│   │   ├── tools.py      # TODO 4
-│   │   ├── cache.py      # TODO 5
-│   │   └── routing.py    # TODO 6
+│   │   ├── rag.py        # ingest_and_index, retrieve, answer
+│   │   ├── tools.py      # lookup_section
+│   │   ├── cache.py      # ExactCache + SemanticCache
+│   │   └── routing.py    # classify_complexity
 │   └── observability/trace.py
 ├── tests/test_smoke.py
 ├── pyproject.toml
@@ -119,18 +115,16 @@ projeto-portfolio/
 └── README.md             # voce esta aqui
 ```
 
-## Os 6 TODOs (mapa rapido)
+## Componentes (mapa rapido)
 
-| TODO | Arquivo | Tempo estimado | Material de referencia |
-|---|---|---:|---|
-| **1** | `src/pipeline/rag.py::ingest_and_index` | 20 min | notebook 02 Etapas 1+2+3 |
-| **2** | `src/pipeline/rag.py::retrieve` | 5 min | notebook 02 Etapa 4 |
-| **3** | `src/pipeline/rag.py::answer` | 15 min | notebook 02 Etapa 5 |
-| **4** | `src/pipeline/tools.py` (sua tool) | 30 min | LAB-001 + criatividade |
-| **5** | `src/pipeline/cache.py::SemanticCache.get` | 15 min | notebook 05 Etapa 4 |
-| **6** | `src/pipeline/routing.py::classify_complexity` | 10 min | notebook 05 Etapa 5 |
-
-**Total estimado:** ~1h35 dos 6 TODOs. Resto do tempo: corpus, deploy, README, polish.
+| # | Arquivo | Responsabilidade |
+|---|---|---|
+| **1** | `src/pipeline/rag.py::ingest_and_index` | Lê o PDF, faz chunking e indexa no Chroma |
+| **2** | `src/pipeline/rag.py::retrieve` | Busca top-k chunks similares à query |
+| **3** | `src/pipeline/rag.py::answer` | Monta contexto, chama o LLM e cita fontes |
+| **4** | `src/pipeline/tools.py::lookup_section` | Tool determinística por seção do PPC |
+| **5** | `src/pipeline/cache.py::SemanticCache.get` | Cache por similaridade de embedding |
+| **6** | `src/pipeline/routing.py::classify_complexity` | Roteamento cheap vs premium |
 
 ## Rubrica
 
