@@ -26,6 +26,7 @@ from src.observability.trace import trace, log_event  # noqa: E402
 from src.pipeline.cache import ExactCache, SemanticCache  # noqa: E402
 from src.pipeline.rag import build_rag_pipeline  # noqa: E402
 from src.pipeline.routing import classify_complexity  # noqa: E402
+from src.pipeline.tools import PPC_SECTIONS, lookup_section  # noqa: E402
 
 
 def is_quota_error(error: Exception) -> bool:
@@ -92,6 +93,26 @@ with st.sidebar:
         get_exact_cache.clear()
         get_semantic_cache.clear()
         st.success("Caches limpos. Recarregue a pagina.")
+    st.divider()
+    st.header("Tool-use")
+
+    section_keys = list(PPC_SECTIONS.keys())
+
+    def format_section(key: str) -> str:
+        data = PPC_SECTIONS[key]
+        title = data.get("titulo") or data.get("title") or key
+        return f"{key} — {title}"
+
+    selected_section = st.selectbox(
+        "Consultar seção estruturada do PPC",
+        options=section_keys,
+        format_func=format_section,
+    )
+
+    if st.button("Executar lookup_section"):
+        tool_result = lookup_section(selected_section)
+        st.success("Tool lookup_section executada")
+        st.json(tool_result)
 
 
 # Main — chat interface
