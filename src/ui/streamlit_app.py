@@ -112,8 +112,11 @@ with st.sidebar:
     if st.button("Executar lookup_section"):
         tool_result = lookup_section(selected_section)
         st.success("Tool lookup_section executada")
-        st.json(tool_result)
 
+        if isinstance(tool_result, (dict, list)):
+            st.json(tool_result)
+        else:
+            st.write(tool_result)
 
 # Main — chat interface
 query = st.text_input(
