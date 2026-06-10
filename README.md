@@ -60,16 +60,28 @@ streamlit run src/ui/streamlit_app.py
 
 ## Cost & Latency
 
-_A preencher após rodar o bench de 50 queries (veja notebook 05)._
+Como o projeto foi executado com free tiers, o custo foi reportado em chamadas de LLM/quota, não em USD. O benchmark completo de 50 queries foi reduzido para um cenário controlado de 10 consultas por causa dos limites de quota observados durante o desenvolvimento.
 
-| Estrategia | Custo total | Reducao | P95 latency |
-|---|---:|---:|---:|
-| Baseline (premium sempre) | $X.XX | — | XX ms |
-| + Exact cache | $X.XX | XX% | XX ms |
-| + Semantic cache | $X.XX | XX% | XX ms |
-| **+ Routing cheap-first** | **$X.XX** | **XX%** | **XX ms** |
+O benchmark final usa um workload de FAQ/cache, com perguntas repetidas e semanticamente próximas, para validar o impacto de exact cache, semantic cache e routing cheap-first.
 
-Meta da rubrica (banda "excelente"): **≥50% de reducao** + P95 reportado.
+| Cenário                                               | Total de queries | Chamadas LLM | Cache hits | Fallbacks | Redução vs. baseline | Latência média | P95 latency |
+| ----------------------------------------------------- | ---------------: | -----------: | ---------: | --------: | -------------------: | -------------: | ----------: |
+| Baseline sem cache                                    |               10 |           10 |          0 |         0 |                    — |     não medido |  não medido |
+| Sistema final: exact cache + semantic cache + routing |               10 |            5 |          5 |         0 |                50.0% |     3376.58 ms | 21242.44 ms |
+
+Resumo do benchmark final:
+
+* Chunks indexados no Chroma: 561
+* Modelo de geração: Groq / `llama-3.1-8b-instant`
+* Embeddings: Gemini / `gemini-embedding-001`
+* Total de consultas: 10
+* Chamadas reais ao LLM: 5
+* Exact cache hits: 4
+* Semantic cache hits: 1
+* Fallbacks por rate limit: 0
+* Redução de chamadas LLM em relação ao baseline: 50.0%
+
+Em cache hit, a resposta é praticamente imediata. Em cache miss, o fluxo executa embedding da pergunta, retrieval no Chroma e geração via Groq/Llama.
 
 ## Design decisions
 
@@ -82,17 +94,18 @@ Meta da rubrica (banda "excelente"): **≥50% de reducao** + P95 reportado.
 
 - O corpus é fixo: apenas o PPC (152 páginas). A demo não suporta upload de outros documentos pelo usuário.
 - As páginas usadas pela tool `lookup_section` são aproximadas e mantidas manualmente — se o PPC for reeditado com nova paginação, elas precisam ser atualizadas.
-- O free tier do Gemini limita a ~15 RPM, o que torna lento o ingest completo e o bench de muitas queries em sequência.
+- O free tier do Gemini limita chamadas de embeddings, o que pode tornar lento o ingest completo e benchmarks longos em sequência.
+- A versão final usa Groq/Llama para geração, mas ainda depende do Gemini para embeddings; se a quota de embeddings acabar, consultas novas podem ficar temporariamente indisponíveis.
 
 ## Tech stack
 
-- **LLM:** Gemini 2.5 Flash-Lite (default) / GPT-4o-mini (alt)
-- **Embeddings:** gemini-embedding-001
-- **Vector store:** Chroma local
-- **Tool customizada:** `lookup_section(section_key: str)` — navegação dirigida por seção do PPC
-- **UI:** Streamlit
-- **Observability:** structured logs com trace_id (Langfuse opcional)
-- **Deploy:** Streamlit Community Cloud
+* **LLM de geração:** Groq / `llama-3.1-8b-instant`
+* **Embeddings:** Gemini / `gemini-embedding-001`
+* **Vector store:** Chroma local com índice versionado em `data/chroma/`
+* **Tool customizada:** `lookup_section(section_key: str)` — navegação dirigida por seção do PPC
+* **UI:** Streamlit
+* **Observability:** structured logs com `trace_id`
+* **Deploy:** Streamlit Community Cloud
 
 ## Estrutura
 
@@ -100,7 +113,7 @@ Meta da rubrica (banda "excelente"): **≥50% de reducao** + P95 reportado.
 rag-portfolio/
 ├── data/
 │   ├── corpus/           # PPC do curso (PDF)
-│   └── chroma/           # vector store (gitignored)
+│   └── chroma/           # vector store versionado para acelerar o deploy
 ├── src/
 │   ├── ui/streamlit_app.py
 │   ├── pipeline/

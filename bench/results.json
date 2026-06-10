@@ -1,0 +1,124 @@
+{
+  "total_queries": 10,
+  "chunks_indexed": 561,
+  "baseline_llm_calls": 10,
+  "optimized_llm_calls": 5,
+  "exact_cache_hits": 4,
+  "semantic_cache_hits": 1,
+  "fallback_count": 0,
+  "reduction_pct": 50.0,
+  "avg_latency_ms": 3376.58,
+  "p95_latency_ms": 21242.44,
+  "records": [
+    {
+      "i": 1,
+      "query": "Quais as disciplinas do primeiro semestre?",
+      "layer": "llm",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 3106.92,
+      "rate_limited": false,
+      "sources_count": 5,
+      "answer_preview": "De acordo com o contexto, as disciplinas do primeiro semestre são: 1. ALGORITMOS E PROGRAMAÇÃO 1 (SCLAPR1) 2. ARQUITETURA DE SOFTWARE (SCLARSW) 3. GESTÃO DE PROJETOS DE SOFTWARE (S"
+    },
+    {
+      "i": 2,
+      "query": "Quais as disciplinas do primeiro semestre?",
+      "layer": "exact_cache",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 0.07,
+      "rate_limited": false,
+      "sources_count": 0,
+      "answer_preview": "De acordo com o contexto, as disciplinas do primeiro semestre são: 1. ALGORITMOS E PROGRAMAÇÃO 1 (SCLAPR1) 2. ARQUITETURA DE SOFTWARE (SCLARSW) 3. GESTÃO DE PROJETOS DE SOFTWARE (S"
+    },
+    {
+      "i": 3,
+      "query": "Qual é o perfil do egresso?",
+      "layer": "llm",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 2717.23,
+      "rate_limited": false,
+      "sources_count": 5,
+      "answer_preview": "Conforme a seção 2 do documento [2025.11.18-PPC-BAC-Engenharia-Software-SCL-Atualização.pdf:p18], o perfil do egresso é: \"Conhece aspectos éticos, econômicos, financeiros e legais "
+    },
+    {
+      "i": 4,
+      "query": "Qual é o perfil do egresso?",
+      "layer": "exact_cache",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 0.05,
+      "rate_limited": false,
+      "sources_count": 0,
+      "answer_preview": "Conforme a seção 2 do documento [2025.11.18-PPC-BAC-Engenharia-Software-SCL-Atualização.pdf:p18], o perfil do egresso é: \"Conhece aspectos éticos, econômicos, financeiros e legais "
+    },
+    {
+      "i": 5,
+      "query": "Segundo o PPC, como funciona o estágio?",
+      "layer": "llm",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 1927.79,
+      "rate_limited": false,
+      "sources_count": 5,
+      "answer_preview": "De acordo com o PPC, o estágio é uma atividade curricular de natureza científica, em campo de conhecimento relacionado ao curso. O estudante pode realizar dois estágios, desde que "
+    },
+    {
+      "i": 6,
+      "query": "Como o estágio é tratado no PPC?",
+      "layer": "semantic_cache",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 687.01,
+      "rate_limited": false,
+      "sources_count": 0,
+      "answer_preview": "De acordo com o PPC, o estágio é uma atividade curricular de natureza científica, em campo de conhecimento relacionado ao curso. O estudante pode realizar dois estágios, desde que "
+    },
+    {
+      "i": 7,
+      "query": "O que o PPC diz sobre TCC?",
+      "layer": "llm",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 4084.16,
+      "rate_limited": false,
+      "sources_count": 5,
+      "answer_preview": "O PPC diz que o Trabalho de Conclusão de Curso (TCC) é uma atividade curricular de natureza científica, em campo de conhecimento que mantém correlação direta com o curso. Ele visa "
+    },
+    {
+      "i": 8,
+      "query": "O que o PPC diz sobre TCC?",
+      "layer": "exact_cache",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 0.05,
+      "rate_limited": false,
+      "sources_count": 0,
+      "answer_preview": "O PPC diz que o Trabalho de Conclusão de Curso (TCC) é uma atividade curricular de natureza científica, em campo de conhecimento que mantém correlação direta com o curso. Ele visa "
+    },
+    {
+      "i": 9,
+      "query": "Quais são as regras do trabalho de conclusão de curso?",
+      "layer": "llm",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 21242.44,
+      "rate_limited": false,
+      "sources_count": 5,
+      "answer_preview": "De acordo com o PPC do Bacharelado em Engenharia de Software do IFSP São Carlos, as regras do Trabalho de Conclusão de Curso (TCC) são as seguintes: 1. O TCC deve representar a int"
+    },
+    {
+      "i": 10,
+      "query": "Quais são as regras do trabalho de conclusão de curso?",
+      "layer": "exact_cache",
+      "route_complexity": "simple",
+      "route_model": "llama-3.1-8b-instant",
+      "latency_ms": 0.07,
+      "rate_limited": false,
+      "sources_count": 0,
+      "answer_preview": "De acordo com o PPC do Bacharelado em Engenharia de Software do IFSP São Carlos, as regras do Trabalho de Conclusão de Curso (TCC) são as seguintes: 1. O TCC deve representar a int"
+    }
+  ]
+}
