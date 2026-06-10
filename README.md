@@ -2,7 +2,7 @@
 
 > Tire dúvidas sobre o Bacharelado em Engenharia de Software do IFSP São Carlos com respostas baseadas no PPC oficial, com citação de página.
 
-<!-- TODO: cole aqui o GIF de demo (10-15s, <5MB) gerado com peek/terminalizer/OBS -->
+![Demo do app](docs/assets/demo.gif)
 
 **Live demo:** https://rag-portfolio.streamlit.app/
 
